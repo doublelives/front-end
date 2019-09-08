@@ -1,0 +1,99 @@
+pool:
+  vmImage: 'ubuntu-latest'
+
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    exclude:
+      - README.md
+
+variables:
+  applicationName: album-frontend
+  tagName: '$(Build.BuildNumber)'
+  imageName: '$(dockerid)/$(applicationName):$(tagName)'
+
+steps:
+  - script: |
+      npm install
+      npm run build
+    displayName: 'npm install and build'
+  - script: docker build -f Dockerfile -t $(imageName) .
+    displayName: 'Docker build'
+
+  - script: |
+      docker login -u $(dockerid) -p $(password)
+      docker push $(imageName)
+    displayName: 'Push docker image'
+  - task: SSH@0
+    displayName: 'Run shell inline on remote machine'
+    inputs:
+      sshEndpoint: 'tencent_centos'
+      runOptions: inline
+
+      inline: |
+        # stop container
+        containers=$(docker ps -q --filter name=$(applicationName))
+        if test -n "$containers"; 
+        then
+        docker stop $(docker ps -q --filter name=$(applicationName)) >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to stop container...'
+         exit $rc;
+        fi
+        fi
+        # remove container
+        containers1=$(docker ps -q -a --filter name=$(applicationName))
+        if test -n "$containers1"; 
+        then
+        docker rm $(docker ps -q -a --filter name=$(applicationName)) >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to remove container...'
+         exit $rc;
+        fi
+        fi
+        # remove image
+        containers2=$(docker images | grep $(applicationName) | awk '{print $3}')
+        if test -n "$containers2"; 
+        then
+        docker rmi $(docker images | grep $(applicationName) | awk '{print $3}') >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to remove image...'
+         exit $rc;
+        fi
+        fi
+        # pull newest image
+        docker pull $(imageName) >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to pull container...'
+         exit $rc;
+        fi
+        # run image
+        docker run -d -p 8084:80 --name $(applicationName) $(imageName) >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to run container...'
+         exit $rc;
+        fi
+        # remove useless images
+        danglings=$(docker images -f "dangling=true" -q)
+        if test -n "$danglings";
+        then
+        docker rmi $(docker images -f "dangling=true" -q) >> /dev/null 2>&1
+        rc=$?
+        if [[ $rc != 0 ]];
+        then
+         echo 'failed to remove danglings container...'
+         exit $rc;
+        fi
+        fi
