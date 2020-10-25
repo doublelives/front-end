@@ -1,12 +1,11 @@
 import React from 'react';
 import './App.css';
+import BaseLayout from './layout/BaseLayout'
 
 function App() {
   return (
     <div className="App">
-      <header className="App-header">
-        
-      </header>
+      <BaseLayout></BaseLayout>
     </div>
   );
 }
